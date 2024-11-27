@@ -136,7 +136,7 @@ class Yolo:
                 list of numpy.ndarray of shape (grid_height, grid_width,
                     anchor_boxes, classes) containing the processed box class
                     probabilities for each output, respectively
-        
+
         Returns:
             tuple (filtered_boxes, box_classes, box_scores):
                 filtered_boxes: numpy.ndarray of shape (?, 4) containing all of
@@ -155,17 +155,18 @@ class Yolo:
             # Reshape box_confidences: (grid_h * grid_w * anchors, 1)
             confidences = box_confidences[i].reshape(-1, 1)
             # Reshape box_class_probs: (grid_h * grid_w * anchors, classes)
-            class_probs = box_class_probs[i].reshape(-1, box_class_probs[i].shape[-1])
-            
+            class_probs = box_class_probs[i].reshape(
+                -1, box_class_probs[i].shape[-1])
+
             # Multiply confidences by class probabilities
             scores = confidences * class_probs
             # Get max score and corresponding class for each box
             max_scores = np.max(scores, axis=1)
             class_indices = np.argmax(scores, axis=1)
-            
+
             # Find indices of boxes with max score greater than threshold
             mask = max_scores >= self.class_t
-            
+
             if len(mask) > 0:
                 # Reshape boxes: (grid_h * grid_w * anchors, 4)
                 current_boxes = boxes[i].reshape(-1, 4)
@@ -178,7 +179,5 @@ class Yolo:
             filtered_boxes = np.concatenate(filtered_boxes, axis=0)
             box_classes = np.concatenate(box_classes, axis=0)
             box_scores = np.concatenate(box_scores, axis=0)
-        
+
         return filtered_boxes, box_classes, box_scores
-        
-        
