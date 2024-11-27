@@ -22,8 +22,8 @@ class Yolo:
 
             anchors (numpy.ndarray): array of shape (outputs, anchor_boxes, 2)
                 containing all anchor boxes:
-                    outputs: number of outputs (predictions) made by the YOLO model
-                    anchor_boxes: number of anchor boxes used for each prediction
+                    outputs: number of outputs (predictions) made
+                    anchor_boxes: number of anchor boxes for each prediction
                     2: [anchor_box_width, anchor_box_height]
 
         """
