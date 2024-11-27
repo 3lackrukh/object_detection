@@ -118,3 +118,67 @@ class Yolo:
             box_class_probs.append(box_class_prob)
 
         return boxes, box_confidences, box_class_probs
+
+    def filter_boxes(self, boxes, box_confidences, box_class_probs):
+        """
+        Filters boxes based on a threshold
+        Arguments:
+            boxes (list of numpy.ndarray):
+                list of numpy.ndarray of shape (grid_height, grid_width,
+                    anchor_boxes, 4) containing the processed boundary boxes
+                    for each output, respectively:
+                        4: (x1, y1, x2, y2)
+            box_confidences (list of numpy.ndarray):
+                list of numpy.ndarray of shape (grid_height, grid_width,
+                    anchor_boxes, 1) containing the processed box confidences
+                    for each output, respectively
+            box_class_probs (list of numpy.ndarray):
+                list of numpy.ndarray of shape (grid_height, grid_width,
+                    anchor_boxes, classes) containing the processed box class
+                    probabilities for each output, respectively
+        
+        Returns:
+            tuple (filtered_boxes, box_classes, box_scores):
+                filtered_boxes: numpy.ndarray of shape (?, 4) containing all of
+                    the filtered bounding boxes:
+                box_classes: numpy.ndarray of shape (?,) containing the class
+                    number for each box in filtered_boxes
+                box_scores: numpy.ndarray of shape (?) containing the box
+                    scores for each box in filtered_boxes
+        """
+        filtered_boxes = []
+        box_classes = []
+        box_scores = []
+        for i in range(len(boxes)):
+            # Get dimensions for reshaping
+            grid_h, grid_w, anchors, _ = boxes[i].shape
+            # Reshape box_confidences: (grid_h * grid_w * anchors, 1)
+            confidences = box_confidences[i].reshape(-1, 1)
+            # Reshape box_class_probs: (grid_h * grid_w * anchors, classes)
+            class_probs = box_class_probs[i].reshape(-1, box_class_probs[i].shape[-1])
+            
+            # Multiply confidences by class probabilities
+            scores = confidences * class_probs
+            # Get max score and corresponding class for each box
+            max_scores = np.max(scores, axis=1)
+            class_indices = np.argmax(scores, axis=1)
+            
+            # Find indices of boxes with max score greater than threshold
+            mask = max_scores >= self.class_t
+            
+            if len(mask) > 0:
+                # Reshape boxes: (grid_h * grid_w * anchors, 4)
+                current_boxes = boxes[i].reshape(-1, 4)
+                # Add filtered results to output lists
+                filtered_boxes.append(current_boxes[mask])
+                box_classes.append(class_indices[mask])
+                box_scores.append(max_scores[mask])
+
+        if filtered_boxes:
+            filtered_boxes = np.concatenate(filtered_boxes, axis=0)
+            box_classes = np.concatenate(box_classes, axis=0)
+            box_scores = np.concatenate(box_scores, axis=0)
+        
+        return filtered_boxes, box_classes, box_scores
+        
+        
