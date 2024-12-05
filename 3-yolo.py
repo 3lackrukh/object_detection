@@ -198,7 +198,7 @@ class Yolo:
                 box in filtered_boxes
 
         Returns:
-            tuple (box_predictions, predicted_box_classes, predicted_box_scores):
+            tuple containing:
                 box_predictions:
                     numpy.ndarray of shape (?, 4) containing all of
                     the predicted bounding boxes ordered by class and box score
@@ -212,14 +212,14 @@ class Yolo:
         box_predictions = []
         predicted_box_classes = []
         predicted_box_scores = []
-        
+
         # Get unique classes
         unique_classes = np.unique(box_classes)
-        
+
         for cls in unique_classes:
             # Get indices of boxes for current class
             indices = np.where(box_classes == cls)[0]
-            
+
             # Get boxes and scores for current class
             class_boxes = filtered_boxes[indices]
             class_scores = box_scores[indices]
@@ -234,31 +234,32 @@ class Yolo:
                 box_predictions.append(class_boxes[0])
                 predicted_box_classes.append(cls)
                 predicted_box_scores.append(class_scores[0])
-                
+
                 if len(class_boxes) == 1:
                     break
-                
+
                 # Compare with rest of the boxes
                 box = class_boxes[0]
-                
+
                 # Calculate coordinates of intersection
                 x1 = np.maximum(box[0], class_boxes[1:, 0])
                 y1 = np.maximum(box[1], class_boxes[1:, 1])
                 x2 = np.minimum(box[2], class_boxes[1:, 2])
                 y2 = np.minimum(box[3], class_boxes[1:, 3])
-                
+
                 # Calculate intersection area
-                intersection_area = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
-                
+                intersection_area = np.maximum(0, x2 - x1) * \
+                    np.maximum(0, y2 - y1)
+
                 # Calculate union area
                 box_area = (box[2] - box[0]) * (box[3] - box[1])
-                class_boxes_area = (class_boxes[1:, 2] - class_boxes[1:, 0]) * \
+                class_boxes_area = (class_boxes[1:, 2] - class_boxes[1:, 0]) *\
                     (class_boxes[1:, 3] - class_boxes[1:, 1])
                 union_area = box_area + class_boxes_area - intersection_area
-                
+
                 # Calculate IoU
                 iou = intersection_area / union_area
-                
+
                 # Keep boxes with IoU less than threshold
                 keep_indices = np.where(iou < self.nms_t)[0]
                 class_boxes = class_boxes[keep_indices + 1]
@@ -268,5 +269,5 @@ class Yolo:
         box_predictions = np.array(box_predictions)
         predicted_box_classes = np.array(predicted_box_classes)
         predicted_box_scores = np.array(predicted_box_scores)
-        
+
         return box_predictions, predicted_box_classes, predicted_box_scores
