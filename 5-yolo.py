@@ -317,6 +317,8 @@ class Yolo:
         """
         pimgs = []
         image_shapes = []
+        
+        # Pull input dimensions for resize
         input_w, input_h = self.model.input.shape[1:3]
 
         for img in images:
@@ -326,6 +328,7 @@ class Yolo:
             pimg = resized / 255.0
             pimgs.append(pimg)
 
+        # Reshape for expected dimensions
         pimgs = np.array(pimgs).reshape(-1, input_h, input_w, 3)
 
         return pimgs, np.array(image_shapes)
