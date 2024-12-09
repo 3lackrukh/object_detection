@@ -326,4 +326,6 @@ class Yolo:
             pimage = resized.astype(np.float32) / 255.0
             pimages.append(pimage)
 
+        pimages = pimages.reshape(-1, input_size[1], input_size[0], 3)
+
         return np.array(pimages), np.array(image_shapes)
