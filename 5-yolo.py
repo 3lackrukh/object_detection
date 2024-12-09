@@ -317,16 +317,15 @@ class Yolo:
         """
         pimgs = []
         image_shapes = []
-        input_size = (self.model.input.shape[2], self.model.input.shape[1])
+        input_w, input_h = self.model.input.shape[1:3]
 
         for img in images:
             image_shapes.append((img.shape[0], img.shape[1]))
-            img = img.astype(np.float32)
-            resized = cv2.resize(img, input_size,
+            resized = cv2.resize(img, (input_w, input_h),
                                  interpolation=cv2.INTER_CUBIC)
-            pimg = resized / 255.0
+            pimg = resized.astype(np.float32) / 255.0
             pimgs.append(pimg)
 
-        pimgs = np.array(pimgs).reshape(-1, input_size[1], input_size[0], 3)
+        pimgs = np.array(pimgs).reshape(-1, input_h, input_w, 3)
 
         return pimgs, np.array(image_shapes)
