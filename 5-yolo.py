@@ -315,17 +315,17 @@ class Yolo:
                 image_shapes (list):
                     list of original shapes of the images
         """
-        pimages = []
+        pimgs = []
         image_shapes = []
         input_size = (self.model.input.shape[2], self.model.input.shape[1])
 
-        for image in images:
-            image_shapes.append((image.shape[0], image.shape[1]))
-            resized = cv2.resize(image, input_size,
+        for img in images:
+            image_shapes.append((img.shape[0], img.shape[1]))
+            resized = cv2.resize(img, input_size,
                                  interpolation=cv2.INTER_CUBIC)
-            pimage = resized.astype(np.float32) / 255.0
-            pimages.append(pimage)
+            pimg = resized.astype(np.float32) / 255.0
+            pimgs.append(pimg)
 
-        pimages = pimages.reshape(-1, input_size[1], input_size[0], 3)
+        pimgs = np.array(pimgs).reshape(-1, input_size[1], input_size[0], 3)
 
-        return np.array(pimages), np.array(image_shapes)
+        return pimgs, np.array(image_shapes)
