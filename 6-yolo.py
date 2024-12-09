@@ -2,6 +2,8 @@
 """ Module defines the class Yolo """
 from tensorflow import keras as K
 import numpy as np
+import os
+import cv2
 
 
 class Yolo:
@@ -118,3 +120,262 @@ class Yolo:
             box_class_probs.append(box_class_prob)
 
         return boxes, box_confidences, box_class_probs
+
+    def filter_boxes(self, boxes, box_confidences, box_class_probs):
+        """
+        Filters boxes based on a threshold
+        Arguments:
+            boxes (list of numpy.ndarray):
+                list of numpy.ndarray of shape (grid_height, grid_width,
+                    anchor_boxes, 4) containing the processed boundary boxes
+                    for each output, respectively:
+                        4: (x1, y1, x2, y2)
+            box_confidences (list of numpy.ndarray):
+                list of numpy.ndarray of shape (grid_height, grid_width,
+                    anchor_boxes, 1) containing the processed box confidences
+                    for each output, respectively
+            box_class_probs (list of numpy.ndarray):
+                list of numpy.ndarray of shape (grid_height, grid_width,
+                    anchor_boxes, classes) containing the processed box class
+                    probabilities for each output, respectively
+
+        Returns:
+            tuple (filtered_boxes, box_classes, box_scores):
+                filtered_boxes: numpy.ndarray of shape (?, 4) containing all of
+                    the filtered bounding boxes:
+                box_classes: numpy.ndarray of shape (?,) containing the class
+                    number for each box in filtered_boxes
+                box_scores: numpy.ndarray of shape (?) containing the box
+                    scores for each box in filtered_boxes
+        """
+        filtered_boxes = []
+        box_classes = []
+        box_scores = []
+        for i in range(len(boxes)):
+            # Get dimensions for reshaping
+            grid_h, grid_w, anchors, _ = boxes[i].shape
+            # Reshape box_confidences: (grid_h * grid_w * anchors, 1)
+            confidences = box_confidences[i].reshape(-1, 1)
+            # Reshape box_class_probs: (grid_h * grid_w * anchors, classes)
+            class_probs = box_class_probs[i].reshape(
+                -1, box_class_probs[i].shape[-1])
+
+            # Multiply confidences by class probabilities
+            scores = confidences * class_probs
+            # Get max score and corresponding class for each box
+            max_scores = np.max(scores, axis=1)
+            class_indices = np.argmax(scores, axis=1)
+
+            # Find indices of boxes with max score greater than threshold
+            mask = max_scores >= self.class_t
+
+            if len(mask) > 0:
+                # Reshape boxes: (grid_h * grid_w * anchors, 4)
+                current_boxes = boxes[i].reshape(-1, 4)
+                # Add filtered results to output lists
+                filtered_boxes.append(current_boxes[mask])
+                box_classes.append(class_indices[mask])
+                box_scores.append(max_scores[mask])
+
+        if filtered_boxes:
+            filtered_boxes = np.concatenate(filtered_boxes, axis=0)
+            box_classes = np.concatenate(box_classes, axis=0)
+            box_scores = np.concatenate(box_scores, axis=0)
+
+        return filtered_boxes, box_classes, box_scores
+
+    def non_max_suppression(self, filtered_boxes, box_classes, box_scores):
+        """
+        Applies non-max suppression to filtered boxes
+
+        Arguments:
+            filtered_boxes (numpy.ndarray):
+                numpy.ndarray of shape (?, 4) containing all of the filtered
+                bounding boxes:
+            box_classes (numpy.ndarray):
+                numpy.ndarray of shape (?,) containing the class number for
+                each box in filtered_boxes
+            box_scores (numpy.ndarray):
+                numpy.ndarray of shape (?) containing the box scores for each
+                box in filtered_boxes
+
+        Returns:
+            tuple containing:
+                box_predictions:
+                    numpy.ndarray of shape (?, 4) containing all of
+                    the predicted bounding boxes ordered by class and box score
+                predicted_box_classes:
+                    numpy.ndarray of shape (?) containing the class number
+                    for each box in box_predictions
+                predicted_box_scores:
+                    numpy.ndarray of shape (?) containing the box scores
+                    for each box in box_predictions
+        """
+        box_predictions = []
+        predicted_box_classes = []
+        predicted_box_scores = []
+
+        # Get unique classes
+        unique_classes = np.unique(box_classes)
+
+        for cls in unique_classes:
+            # Get indices of boxes for current class
+            indices = np.where(box_classes == cls)[0]
+
+            # Get boxes and scores for current class
+            class_boxes = filtered_boxes[indices]
+            class_scores = box_scores[indices]
+
+            # Sort by score in descending order
+            score_sort = np.argsort(-class_scores)
+            class_boxes = class_boxes[score_sort]
+            class_scores = class_scores[score_sort]
+
+            while len(class_boxes) > 0:
+                # Take the box with highest score
+                box_predictions.append(class_boxes[0])
+                predicted_box_classes.append(cls)
+                predicted_box_scores.append(class_scores[0])
+
+                if len(class_boxes) == 1:
+                    break
+
+                # Compare with rest of the boxes
+                box = class_boxes[0]
+
+                # Calculate coordinates of intersection
+                x1 = np.maximum(box[0], class_boxes[1:, 0])
+                y1 = np.maximum(box[1], class_boxes[1:, 1])
+                x2 = np.minimum(box[2], class_boxes[1:, 2])
+                y2 = np.minimum(box[3], class_boxes[1:, 3])
+
+                # Calculate intersection area
+                intersection_area = np.maximum(0, x2 - x1) * \
+                    np.maximum(0, y2 - y1)
+
+                # Calculate union area
+                box_area = (box[2] - box[0]) * (box[3] - box[1])
+                class_boxes_area = (class_boxes[1:, 2] - class_boxes[1:, 0]) *\
+                    (class_boxes[1:, 3] - class_boxes[1:, 1])
+                union_area = box_area + class_boxes_area - intersection_area
+
+                # Calculate IoU
+                iou = intersection_area / union_area
+
+                # Keep boxes with IoU less than threshold
+                keep_indices = np.where(iou < self.nms_t)[0]
+                class_boxes = class_boxes[keep_indices + 1]
+                class_scores = class_scores[keep_indices + 1]
+
+        # Convert results to numpy arrays
+        box_predictions = np.array(box_predictions)
+        predicted_box_classes = np.array(predicted_box_classes)
+        predicted_box_scores = np.array(predicted_box_scores)
+
+        return box_predictions, predicted_box_classes, predicted_box_scores
+
+    def load_images(self, folder_path):
+        """
+        Loads images from a folder
+
+        Arguments:
+            folder_path (str): path to the folder containing the images
+
+        Returns:
+            tuple containing:
+                images (list):
+                    list of images as numpy arrays
+                image_paths (list):
+                    list of paths to the images
+        """
+        images = []
+        image_paths = []
+
+        for filename in os.listdir(folder_path):
+            if filename.endswith(('.jpg', '.jpeg', '.png')):
+                image_path = os.path.join(folder_path, filename)
+                image = cv2.imread(image_path)
+                images.append(image)
+                image_paths.append(image_path)
+
+        return images, image_paths
+
+    def preprocess_images(self, images):
+        """
+        Preprocesses images for YOLO model
+
+        Arguments:
+            images (list):
+                list of images as numpy arrays
+
+        Returns:
+            tuple containing:
+                pimages (list):
+                    list of preprocessed images as numpy arrays
+                image_shapes (list):
+                    list of original shapes of the images
+        """
+        pimgs = []
+        image_shapes = []
+
+        # Pull input dimensions for resize
+        input_w, input_h = self.model.input.shape[1:3]
+
+        for img in images:
+            image_shapes.append((img.shape[0], img.shape[1]))
+            resized = cv2.resize(img, (input_w, input_h),
+                                 interpolation=cv2.INTER_CUBIC)
+            pimg = resized / 255.0
+            pimgs.append(pimg)
+
+        # Reshape for expected dimensions
+        pimgs = np.array(pimgs).reshape(-1, input_h, input_w, 3)
+
+        return pimgs, np.array(image_shapes)
+
+    def show_boxes(self, image, boxes, box_classes, box_scores, file_name):
+        """
+        Displays the image with bounding boxes and labels
+
+        Arguments:
+            image (numpy.ndarray):
+                numpy array of shape (height, width, 3) representing the image
+            boxes (numpy.ndarray):
+                numpy array of shape (?, 4) containing the bounding boxes
+                ordered by class and box score
+            box_classes (numpy.ndarray):
+                numpy array of shape (?) containing the class number for each
+                box in boxes
+            box_scores (numpy.ndarray):
+                numpy array of shape (?) containing the box scores for each
+                box in boxes
+            file_name (str):
+                name of the file to be saved
+        """
+        # Draw boxes and labels on the image
+        for box, cls, score in zip(boxes, box_classes, box_scores):
+            # Typecast coordinates to int
+            x1, y1, x2, y2 = map(lambda x: int(round(x)), box)
+            # Draw blue bounding box
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            # Red label text
+            label = f'{self.class_names[cls]} {score:.2f}'
+            cv2.putText(image, label,
+                        (x1, y1 - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 0, 255),
+                        1,
+                        cv2.LINE_AA)
+
+        # Display image
+        cv2.imshow(file_name, image)
+        # Wait for key-press and save key code
+        key = cv2.waitKey(0) & 0xFF
+        # If 's' save the image
+        if key == ord('s'):
+            os.makedirs('detections', exist_ok=True)
+            output_path = os.path.join('detections', file_name)
+            cv2.imwrite(output_path, image)
+
+        cv2.destroyAllWindows()
